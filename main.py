@@ -1,94 +1,88 @@
-import os
-import shutil
-import requests
+import io
+import sys
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.pagesizes import A4
 from PyPDF2 import PdfFileMerger
 from pathlib import Path
+from PIL import Image
+from urllib.request import urlopen
 
-url_stt = 'null'
-url_end = 'null'
-pages = 1
-output_dir = 'temp'
+url_stt = 'temp'
+url_end = 'temp'
+pages = 87
+output = 'temp'
 
-
-def tidy_up():
-    # delete the directory if it already exists
-    try:
-        shutil.rmtree(output_dir) # use shutil.rmtree here instead of os.rmdir as it works if the directory is not empty
-    except OSError as err:
-        print("Deletion of the directory %s failed" % output_dir)
-
-def setup():
-    tidy_up()
-
+def get_input_params():
+    print("Aquiring input parameters")
     global url_stt
     global url_end
     global pages
+    global output
 
-    url_stt = input("First half of URL: ")
-    url_end = input("Second half of URL: ")
-    pages = int(input("Page count: "))
+    args = sys.argv[1:]
 
+    if len(args) == 1:
+        print("Reading values from config file")
+        filename = args[0]
+        f = open(filename, "r")
+        url_stt = f.readline().rstrip()                   # rstrip removes any trailing return characters
+        url_end = f.readline().rstrip()
+        pages = int(f.readline())
+        output= f.readline().rstrip()
+    elif len(args) == 0:
+        print("Please provide parameters: ")
+        url_stt = input("First half of URL: ")
+        url_end = input("Second half of URL: ")
+        pages = int(input("Page count: "))
+        output = input("Output file name: ")
+    else:
+        # TODO - print usage
+        print("Invalid input parameters")
+        sys.exit()
+
+    # display inputs for user to confirm
     print("Values provided: ")
-    print("\t> URL - {}_{}".format(url_stt, url_end))
+    print("\t> URL - {}*{}".format(url_stt, url_end))
     print("\t> Pgs - {}".format(pages))
 
-    # create output directory
-    os.mkdir(output_dir)
-    print("Setup complete")
+    print("Input parameters aquired")
 
+def create_document():
+    print("Creating document")
 
-def get_pages():
+    pdf_merger = PdfFileMerger()                        # Local PdfFileMerger - this is our final output file that we will append pages to as they are created.
+
     for x in range(1,pages+1):
-        # Update user on profress
-        progress = "Getting page " + str(x)
-        print (progress, end="\r")              # Using ,end='\r' returns the cursor to the beginning of the line and overwrites previous output
-        
-        # local variables
+        print("Creating page " + str(x), end="\r")      # Using ,end='\r' returns the cursor to the beginning of the line and overwrites previous output
         url = url_stt + str(x) + url_end
-        filename = output_dir + '\\page' + str(x) + '.jpg'
-
-        # Get and write the file to local jpg
-        r = requests.get(url, stream = True)    # Use stream = True to guarantee no interruptions.
-        r.raw.decode_content = True             # Set decode_content value to True, otherwise the downloaded image file's size will be zero.
-        with open(filename,'wb') as f:          # Open a local file with wb ( write binary ) permission.
-            shutil.copyfileobj(r.raw, f)        # Copy downloaded file to local jpg in output folder
+        img = get_img_from_url(url)
+        pdf = img_to_pdf(img)    
+        pdf_merger.append(pdf)
     
-
-    print ("Finished getting pages")
-
-def create_pdf():
-    # First - convert each jpg to a pdf
-    print("Creating pages")
-    pages_act = pages+1
-    for x in range(1,pages_act):
-        print("Creating page " + str(x), end="\r")
-        filename = output_dir + '\\page' + str(x)
-        filename_jpg = filename + '.jpg'
-        filename_pdf = filename + '.pdf'
-        canvas = Canvas(filename_pdf, pagesize=A4)
-        canvas.drawInlineImage(filename_jpg, 0, 0, A4[0], A4[1])
-        canvas.save()
+    write_PdfFileMerger(pdf_merger)
     
-    print("Finished creating pages")
-    print("Creating single doc")
+    print ("Finished")
 
-    # Second - merge all pdfs into one output file
-    pdf_merger = PdfFileMerger()
-    for x in range(1,pages_act):
-        print("Appending page " + str(x), end="\r")
-        input_file = output_dir + '\\page' + str(x) + '.pdf'
-        pdf_merger.append(input_file)
+def img_to_pdf(img):
+    # This function takes an img and puts it into a new blank A4 pdf page. It will fill the page. 
+    canvas = Canvas("page", pagesize=A4)                # Name is not relevant as it will be lost/overwritten. TODO add overloaded method that allows for name to be passed in.
+    canvas.drawInlineImage(img, 0, 0, A4[0], A4[1])     # drawInlineImage(img, x, y, width, height) - Note x,y origin is bottom left of page 
+    pdf = io.BytesIO()                                  #https://stackoverflow.com/questions/26880692/how-to-create-a-file-object-in-python-without-using-open
+    pdf.write(canvas.getpdfdata())                      #""   
+    pdf.seek(0)                                         #""
+    return pdf
 
-    print("Finished appending pages")
-    with Path("document.pdf").open(mode="wb") as output_file:
+def get_img_from_url(url):
+    # This function returns an image aquired from an http request to a remote server
+    # that can be used as if it had been opened from the local file system.
+    r = urlopen(url=url)                               # Use urlopen from urllib.request to make the http request
+    img = io.BytesIO(r.read())                         # Use read() to get the raw bytes returned (the image bytes)
+    img = Image.open(img)                              # Image.open needs the raw bytes to create. This returns Image
+    return img                  
+
+def write_PdfFileMerger(pdf_merger):
+    with Path(output).open(mode="wb") as output_file:
         pdf_merger.write(output_file)
-    
-    print("Finished creating single doc")
 
-    
-setup()
-get_pages()
-create_pdf()
-tidy_up()
+get_input_params()
+create_document()
