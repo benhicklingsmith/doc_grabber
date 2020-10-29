@@ -1,5 +1,6 @@
 import io
 import sys
+import validators
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.pagesizes import A4
 from PyPDF2 import PdfFileMerger
@@ -45,6 +46,11 @@ def get_input_params():
     print("\t> URL - {}*{}".format(url_stt, url_end))
     print("\t> Pgs - {}".format(pages))
 
+    #validate url
+    if isValidUrl(url_stt + "1" + url_end)  == False: 
+        print("Invalid URL provided.")
+        sys.exit()
+
     print("Input parameters aquired")
 
 def create_document():
@@ -64,7 +70,12 @@ def create_document():
     print ("Finished")
 
 def img_to_pdf(img):
-    # This function takes an img and puts it into a new blank A4 pdf page. It will fill the page. 
+    # This function takes an img and puts it into a new blank A4 pdf page. It will fill the page.
+
+    # validate input image
+    if isValidImage(img) == False : 
+        return
+
     canvas = Canvas("page", pagesize=A4)                # Name is not relevant as it will be lost/overwritten. TODO add overloaded method that allows for name to be passed in.
     canvas.drawInlineImage(img, 0, 0, A4[0], A4[1])     # drawInlineImage(img, x, y, width, height) - Note x,y origin is bottom left of page 
     pdf = io.BytesIO()                                  #https://stackoverflow.com/questions/26880692/how-to-create-a-file-object-in-python-without-using-open
@@ -72,13 +83,31 @@ def img_to_pdf(img):
     pdf.seek(0)                                         #""
     return pdf
 
+def isValidImage(img):
+    if img == None:
+        return False
+    return True
+
 def get_img_from_url(url):
     # This function returns an image aquired from an http request to a remote server
     # that can be used as if it had been opened from the local file system.
+
+    # validate input url
+    if isValidUrl(url) == False : 
+        return
+
     r = urlopen(url=url)                               # Use urlopen from urllib.request to make the http request
     img = io.BytesIO(r.read())                         # Use read() to get the raw bytes returned (the image bytes)
     img = Image.open(img)                              # Image.open needs the raw bytes to create. This returns Image
     return img                  
+
+def isValidUrl(url):
+    if url == None:
+        return False
+    is_valid = validators.url(url)
+    if is_valid != True:
+        return False
+    return True
 
 def write_PdfFileMerger(pdf_merger):
     with Path(output).open(mode="wb") as output_file:
